@@ -1,0 +1,211 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id          String   @id @default(cuid())
+  username    String   @unique
+  email       String?  @unique
+  avatar      String   @default("🎭")
+  passwordHash String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  gamesPlayed    GamePlayer[]
+  questionsCreated Question[]
+  achievements   UserAchievement[]
+  friends        Friendship[] @relation("UserFriends")
+  friendOf       Friendship[] @relation("FriendOf")
+  
+  @@map("users")
+}
+
+model Game {
+  id          String   @id @default(cuid())
+  roomCode    String   @unique
+  hostId      String
+  status      GameStatus @default(WAITING)
+  settings    Json     // Game settings (time limit, categories, etc.)
+  currentQuestionIndex Int @default(0)
+  startedAt   DateTime?
+  endedAt     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  players     GamePlayer[]
+  questions   GameQuestion[]
+  
+  @@map("games")
+}
+
+model GamePlayer {
+  id       String @id @default(cuid())
+  gameId   String
+  userId   String
+  score    Int    @default(0)
+  streak   Int    @default(0)
+  position Int?   // Final position in the game
+  
+  // Relations
+  game     Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers  PlayerAnswer[]
+  
+  @@unique([gameId, userId])
+  @@map("game_players")
+}
+
+model Question {
+  id          String      @id @default(cuid())
+  type        QuestionType
+  question    String
+  data        Json        // Question data (answers, correct answer, etc.)
+  category    String
+  difficulty  Difficulty  @default(MEDIUM)
+  points      Int         @default(100)
+  timeLimit   Int         @default(30)
+  isPublic    Boolean     @default(false)
+  createdById String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  // Relations
+  createdBy   User?       @relation(fields: [createdById], references: [id])
+  gameQuestions GameQuestion[]
+  
+  @@map("questions")
+}
+
+model GameQuestion {
+  id         String @id @default(cuid())
+  gameId     String
+  questionId String
+  order      Int
+  
+  // Relations
+  game       Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  question   Question @relation(fields: [questionId], references: [id])
+  answers    PlayerAnswer[]
+  
+  @@unique([gameId, questionId])
+  @@map("game_questions")
+}
+
+model PlayerAnswer {
+  id             String   @id @default(cuid())
+  gamePlayerId   String
+  gameQuestionId String
+  answer         Json     // Player's answer
+  isCorrect      Boolean
+  pointsEarned   Int
+  timeSpent      Int      // Time in seconds
+  answeredAt     DateTime @default(now())
+  
+  // Relations
+  gamePlayer     GamePlayer   @relation(fields: [gamePlayerId], references: [id], onDelete: Cascade)
+  gameQuestion   GameQuestion @relation(fields: [gameQuestionId], references: [id], onDelete: Cascade)
+  
+  @@unique([gamePlayerId, gameQuestionId])
+  @@map("player_answers")
+}
+
+model Achievement {
+  id          String @id @default(cuid())
+  name        String @unique
+  description String
+  icon        String
+  condition   Json   // Conditions to unlock this achievement
+  points      Int    @default(0)
+  
+  // Relations
+  users       UserAchievement[]
+  
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String   @id @default(cuid())
+  userId        String
+  achievementId String
+  unlockedAt    DateTime @default(now())
+  
+  // Relations
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
+
+model Friendship {
+  id         String   @id @default(cuid())
+  userId     String
+  friendId   String
+  status     FriendshipStatus @default(PENDING)
+  createdAt  DateTime @default(now())
+  
+  // Relations
+  user       User @relation("UserFriends", fields: [userId], references: [id], onDelete: Cascade)
+  friend     User @relation("FriendOf", fields: [friendId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, friendId])
+  @@map("friendships")
+}
+
+model Leaderboard {
+  id        String   @id @default(cuid())
+  userId    String
+  category  String   // "all_time", "weekly", "monthly", etc.
+  score     Int
+  rank      Int
+  period    String   // "2024-01", "2024-W01", etc.
+  updatedAt DateTime @updatedAt
+  
+  @@unique([userId, category, period])
+  @@map("leaderboards")
+}
+
+enum GameStatus {
+  WAITING
+  STARTING
+  IN_PROGRESS
+  FINISHED
+  CANCELLED
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  TEXT_INPUT
+  ORDERING
+  SLIDER
+  IMAGE_ZONES
+  MATCHING
+  SPEED
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+  EXPERT
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  BLOCKED
+}
