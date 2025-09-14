@@ -11,6 +11,7 @@ interface User {
 
 interface AuthContextType {
   user: User | null
+  token: string | null
   loading: boolean
   login: (username: string, password: string) => Promise<void>
   register: (username: string, password: string, email?: string, avatar?: string) => Promise<void>
@@ -22,6 +23,7 @@ const AuthContext = createContext<AuthContextType | null>(null)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null)
+  const [token, setToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const checkAuth = async () => {
@@ -32,12 +34,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (response.ok) {
         const data = await response.json()
         setUser(data.user)
+        setToken(data.token) // Token maintenant inclus dans la réponse
       } else {
         setUser(null)
+        setToken(null)
       }
     } catch (error) {
       console.error('Auth check failed:', error)
       setUser(null)
+      setToken(null)
     } finally {
       setLoading(false)
     }
@@ -66,6 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const data = await response.json()
       setUser(data.user)
+      setToken(data.token) // Token maintenant inclus dans la réponse
     } finally {
       setLoading(false)
     }
@@ -90,6 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const data = await response.json()
       setUser(data.user)
+      setToken(data.token) // Token maintenant inclus dans la réponse
     } finally {
       setLoading(false)
     }
@@ -104,10 +111,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       })
       console.log('Logout successful, clearing user state')
       setUser(null)
+      setToken(null)
     } catch (error) {
       console.error('Logout error:', error)
       // Even if logout fails, clear the user state locally
       setUser(null)
+      setToken(null)
     } finally {
       setLoading(false)
     }
@@ -116,6 +125,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider value={{
       user,
+      token,
       loading,
       login,
       register,

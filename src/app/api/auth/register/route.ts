@@ -159,6 +159,7 @@ export async function POST(request: NextRequest) {
         avatar: user.avatar,
         joinedAt: user.createdAt
       },
+      token, // Inclure le token dans la réponse
       message: 'Registration successful'
     }, { status: 201 })
 

@@ -36,6 +36,46 @@ const prisma = new PrismaClient({
 // État des jeux en cours
 const gameRooms = new Map();
 
+// Configuration du nettoyage des rooms
+const ROOM_CLEANUP_INTERVAL = 30 * 60 * 1000; // 30 minutes
+const INACTIVE_ROOM_THRESHOLD = 60 * 60 * 1000; // 1 heure
+const EMPTY_ROOM_THRESHOLD = 5 * 60 * 1000; // 5 minutes
+
+// Fonction de nettoyage automatique des rooms inactives
+function cleanupInactiveRooms() {
+  const now = Date.now();
+  const roomsToDelete = [];
+
+  for (const [gameId, room] of gameRooms.entries()) {
+    const isEmpty = room.players.size === 0;
+    const isInactive = (now - room.lastActivity) > INACTIVE_ROOM_THRESHOLD;
+    const isEmptyTooLong = isEmpty && (now - room.lastActivity) > EMPTY_ROOM_THRESHOLD;
+
+    if (isEmptyTooLong || isInactive) {
+      roomsToDelete.push({ gameId, room });
+    }
+  }
+
+  for (const { gameId, room } of roomsToDelete) {
+    console.log(`🧹 Cleaning up inactive room: ${room.roomCode} (${isEmpty ? 'empty' : 'inactive'} for ${Math.round((now - room.lastActivity) / 60000)} minutes)`);
+    gameRooms.delete(gameId);
+  }
+
+  if (roomsToDelete.length > 0) {
+    console.log(`🧹 Cleaned up ${roomsToDelete.length} inactive rooms. Active rooms: ${gameRooms.size}`);
+  }
+}
+
+// Démarrer le nettoyage automatique
+const cleanupInterval = setInterval(cleanupInactiveRooms, ROOM_CLEANUP_INTERVAL);
+
+// Fonction pour mettre à jour l'activité d'une room
+function updateRoomActivity(room) {
+  if (room) {
+    room.lastActivity = Date.now();
+  }
+}
+
 // Classes utilitaires
 class PowerUpManager {
   constructor() {
@@ -579,7 +619,8 @@ app.prepare().then(() => {
             questions: [],
             status: game.status,
             settings: game.settings,
-            answers: new Map()
+            answers: new Map(),
+            lastActivity: Date.now() // Horodatage d'activité
           };
           gameRooms.set(game.id, room);
 
@@ -645,6 +686,9 @@ app.prepare().then(() => {
 
         console.log(`${user.username} joined game ${roomCode} as ${isHost ? 'HOST' : 'PLAYER'}`);
 
+        // Mettre à jour l'activité de la room
+        updateRoomActivity(room);
+
       } catch (error) {
         console.error('Error joining game:', error);
         socket.emit('error', { message: 'Erreur lors de la connexion à la partie' });
@@ -669,6 +713,9 @@ app.prepare().then(() => {
         });
 
         console.log(`${user.username} left game ${roomCode}`);
+
+        // Mettre à jour l'activité de la room
+        updateRoomActivity(room);
       }
     });
 
@@ -692,6 +739,9 @@ app.prepare().then(() => {
             status: room.status,
             settings: room.settings
           });
+
+          // Mettre à jour l'activité de la room
+          updateRoomActivity(room);
         }
       }
     });
@@ -938,14 +988,25 @@ app.prepare().then(() => {
   });
 });
 
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received');
-  await prisma.$disconnect();
-  process.exit(0);
-});
+// Nettoyage lors de l'arrêt du serveur
+async function gracefulShutdown(signal) {
+  console.log(`${signal} received`);
 
-process.on('SIGINT', async () => {
-  console.log('SIGINT received');
+  // Arrêter le nettoyage automatique
+  if (cleanupInterval) {
+    clearInterval(cleanupInterval);
+  }
+
+  // Nettoyer toutes les rooms actives
+  console.log(`🧹 Cleaning up ${gameRooms.size} active rooms before shutdown...`);
+  gameRooms.clear();
+
+  // Fermer la connexion Prisma
   await prisma.$disconnect();
+
+  console.log('✅ Graceful shutdown completed');
   process.exit(0);
-});
+}
+
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);

@@ -17,7 +17,8 @@
       "Bash(taskkill:*)",
       "Bash(cmd //c:*)",
       "Bash(npx next dev:*)",
-      "Bash(tasklist)"
+      "Bash(tasklist)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": [],
     "ask": []

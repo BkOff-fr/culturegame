@@ -313,7 +313,7 @@ export class GameModeManager {
   ): Promise<any[]> {
     const config = GAME_MODE_CONFIGS[mode];
 
-    let whereCondition: any = { isPublic: true };
+    const whereCondition: any = { isPublic: true };
 
     if (difficulty) {
       whereCondition.difficulty = difficulty;

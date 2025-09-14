@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 import { POWER_UP_DEFINITIONS } from '@/lib/powerups';
 
@@ -17,10 +17,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Token invalide' }, { status: 401 });
     }
 
-    // Get user's power-up inventory
+    // Get user's power-up inventory - optimized query
     const userPowerUps = await prisma.userPowerUp.findMany({
       where: { userId: payload.userId },
-      include: { powerUp: true }
+      select: {
+        powerUpId: true,
+        quantity: true,
+        powerUp: {
+          select: {
+            type: true,
+            name: true,
+            description: true,
+            icon: true
+          }
+        }
+      }
     });
 
     // Transform to expected format

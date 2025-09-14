@@ -89,15 +89,25 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       // Remove the first recovery check to prevent duplicates
 
-      // Se connecter au serveur Socket.io intégré sur le même port que Next.js
-      const newSocket = io('http://localhost:3000', {
+      // Configuration dynamique de l'URL Socket.io
+      const socketUrl = process.env.NODE_ENV === 'production'
+        ? window.location.origin // En production, utiliser l'origine actuelle
+        : (process.env.NEXT_PUBLIC_SOCKET_URL || window.location.origin);
+
+      console.log('Connecting to Socket.io server:', socketUrl);
+
+      // Se connecter au serveur Socket.io
+      const newSocket = io(socketUrl, {
         auth: { token },
+        transports: ['websocket', 'polling'], // WebSocket prioritaire
+        upgrade: true,
+        rememberUpgrade: true,
         autoConnect: true,
         reconnection: true,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
-        reconnectionAttempts: 5,
-        timeout: 20000
+        reconnectionAttempts: 3, // Réduit de 5 à 3
+        timeout: 10000 // Réduit de 20000 à 10000
       });
 
       socketRef.current = newSocket;

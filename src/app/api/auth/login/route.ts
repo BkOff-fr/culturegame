@@ -40,7 +40,8 @@ export async function POST(request: NextRequest) {
         username: user.username,
         email: user.email,
         avatar: user.avatar
-      }
+      },
+      token // Inclure le token dans la réponse
     })
 
     // Définir le cookie

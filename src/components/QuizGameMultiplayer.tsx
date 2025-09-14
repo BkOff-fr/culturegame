@@ -20,22 +20,16 @@ const QuizGameMultiplayer = () => {
   const [currentScreen, setCurrentScreen] = useState<Screen>('auth')
   const [gameResults, setGameResults] = useState<any>(null)
 
-  const { user, loading: authLoading } = useAuth()
+  const { user, token, loading: authLoading } = useAuth()
   const { connected, gameState, currentQuestion, connect } = useSocket()
 
   // Auto-connect to socket when user is authenticated
   useEffect(() => {
-    if (user && !connected && !authLoading) {
-      const token = document.cookie.split(';')
-        .find(row => row.startsWith('token='))
-        ?.split('=')[1]
-
-      if (token) {
-        console.log('Auto-connecting to socket...')
-        connect(token)
-      }
+    if (user && token && !connected && !authLoading) {
+      console.log('Auto-connecting to socket with token...')
+      connect(token)
     }
-  }, [user, connected, authLoading, connect])
+  }, [user, token, connected, authLoading, connect])
 
   // Handle authentication state changes
   useEffect(() => {
