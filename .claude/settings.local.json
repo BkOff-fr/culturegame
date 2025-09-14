@@ -5,7 +5,19 @@
       "Bash(npx prisma:*)",
       "Bash(npx tsx:*)",
       "Bash(npm run dev:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npm run:*)",
+      "Bash(rm:*)",
+      "Bash(node server.js)",
+      "Bash(npx tsc:*)",
+      "Bash(timeout:*)",
+      "Bash([ ! -f \"src/hooks/useAuth.ts\" ])",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(cmd //c:*)",
+      "Bash(npx next dev:*)",
+      "Bash(tasklist)"
     ],
     "deny": [],
     "ask": []

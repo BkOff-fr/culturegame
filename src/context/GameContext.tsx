@@ -42,6 +42,8 @@ interface GameContextType {
   loadQuestions: (filters?: any) => Promise<Question[]>
   createQuestion: (questionData: any) => Promise<any>
   startGame: (gameId: string) => Promise<Game>
+  checkActiveGame: () => Promise<void>
+  setCurrentGame: (game: Game | null) => void
 }
 
 const GameContext = createContext<GameContextType | null>(null)
@@ -54,10 +56,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   console.log('GameProvider - currentGame state:', currentGame)
   
-  // Check for active game on mount
+  // Check for active game when component mounts
   React.useEffect(() => {
     const checkActiveGame = async () => {
       if (initialized) return
+      setInitialized(true)
       
       try {
         const response = await fetch('/api/games/active', {
@@ -69,12 +72,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (data.game) {
             console.log('Found active game:', data.game)
             setCurrentGame(data.game)
+          } else {
+            console.log('No active game found')
+            setCurrentGame(null)
           }
         }
       } catch (error) {
-        console.log('No active game found or error checking:', error)
-      } finally {
-        setInitialized(true)
+        console.log('Error checking for active game:', error)
+        setCurrentGame(null)
       }
     }
     
@@ -243,6 +248,28 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }
 
+  const checkActiveGame = async () => {
+    try {
+      const response = await fetch('/api/games/active', {
+        credentials: 'include'
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.game) {
+          console.log('Found active game:', data.game)
+          setCurrentGame(data.game)
+        } else {
+          console.log('No active game found')
+          setCurrentGame(null)
+        }
+      }
+    } catch (error) {
+      console.log('Error checking for active game:', error)
+      setCurrentGame(null)
+    }
+  }
+
   return (
     <GameContext.Provider value={{
       currentGame,
@@ -253,7 +280,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       leaveGame,
       loadQuestions,
       createQuestion,
-      startGame
+      startGame,
+      checkActiveGame,
+      setCurrentGame
     }}>
       {children}
     </GameContext.Provider>

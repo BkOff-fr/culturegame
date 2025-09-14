@@ -2,11 +2,12 @@
 
 import React from 'react'
 import { Trophy, Home, Star } from 'lucide-react'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/context/AuthContext'
 
 interface GameResultsProps {
   onPlayAgain: () => void
   onBackToLobby: () => void
+  results?: any
   score?: number
   totalQuestions?: number
 }

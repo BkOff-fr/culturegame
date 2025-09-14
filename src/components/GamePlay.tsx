@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { Clock, Volume2, VolumeX, Zap } from 'lucide-react'
 import { useGame } from '@/context/GameContext'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/context/AuthContext'
 
 interface GamePlayProps {
   onGameEnd: () => void

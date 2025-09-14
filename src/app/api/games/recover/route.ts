@@ -4,7 +4,6 @@ import { verifyToken } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
   try {
-    // Vérifier l'authentification
     const token = request.cookies.get('token')?.value
 
     if (!token) {
@@ -47,10 +46,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ game: null })
     }
 
-    return NextResponse.json({ game: activeGame })
+    return NextResponse.json({
+      game: {
+        id: activeGame.id,
+        roomCode: activeGame.roomCode,
+        status: activeGame.status,
+        settings: activeGame.settings,
+        hostId: activeGame.hostId,
+        players: activeGame.players.map(p => ({
+          id: p.id,
+          score: p.score,
+          user: p.user
+        }))
+      }
+    })
 
   } catch (error) {
-    console.error('Get active game error:', error)
-    return NextResponse.json({ error: 'Failed to get active game' }, { status: 500 })
+    console.error('Game recovery error:', error)
+    return NextResponse.json({ error: 'Failed to recover game' }, { status: 500 })
   }
 }

@@ -1,13 +1,13 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Users, Zap, Edit3, ChevronRight, LogOut, Trophy, BarChart3 } from 'lucide-react'
-import { useAuth } from '@/hooks/useAuth'
-import { useGame } from '@/context/GameContext'
+import { Users, Zap, Edit3, LogOut, Trophy, BarChart3 } from 'lucide-react'
+import { useAuth } from '@/context/AuthContext'
+import { useSocket } from '@/context/SocketContext'
 
 interface GameLobbyProps {
   onCreateRoom: () => void
-  onJoinRoom: () => void
+  onJoinRoom: (roomCode: string) => Promise<void>
   onOpenEditor: () => void
   onStartSolo: () => void
   onOpenLeaderboard: () => void
@@ -27,34 +27,20 @@ const GameLobby: React.FC<GameLobbyProps> = ({
   const [error, setError] = useState('')
 
   const { user, logout } = useAuth()
-  const { createGame, joinGame } = useGame()
+  const { disconnect } = useSocket()
 
   const handleCreateRoom = async () => {
-    setLoading(true)
-    setError('')
-    try {
-      await createGame({
-        maxPlayers: 4,
-        timePerQuestion: 30,
-        categories: ['all'],
-        difficulty: 'all'
-      })
-      onCreateRoom()
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
+    onCreateRoom()
   }
 
   const handleJoinRoom = async () => {
     if (!joinCode.trim()) return
-    
+
     setLoading(true)
     setError('')
     try {
-      await joinGame(joinCode.trim().toUpperCase())
-      onJoinRoom()
+      await onJoinRoom(joinCode.trim().toUpperCase())
+      setJoinCode('')
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -64,7 +50,15 @@ const GameLobby: React.FC<GameLobbyProps> = ({
 
   const handleLogout = async () => {
     try {
+      console.log('Starting logout process...')
+
+      // Disconnect from Socket.io first
+      disconnect()
+
+      // Then logout from auth
       await logout()
+
+      console.log('Logout process completed')
     } catch (error) {
       console.error('Logout error:', error)
     }
