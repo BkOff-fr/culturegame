@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { Brain } from 'lucide-react'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/context/AuthContext'
 
 interface AuthFormProps {
   onSuccess: () => void

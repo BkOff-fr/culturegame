@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { Copy, Check, Crown, Users } from 'lucide-react'
 import { useGame } from '@/context/GameContext'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/context/AuthContext'
 
 interface GameRoomProps {
   onStartGame: () => void

@@ -21,14 +21,20 @@ model User {
   passwordHash String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
+
   // Relations
-  gamesPlayed    GamePlayer[]
+  gamesPlayed      GamePlayer[]
   questionsCreated Question[]
-  achievements   UserAchievement[]
-  friends        Friendship[] @relation("UserFriends")
-  friendOf       Friendship[] @relation("FriendOf")
-  
+  achievements     UserAchievement[]
+  friends          Friendship[] @relation("UserFriends")
+  friendOf         Friendship[] @relation("FriendOf")
+  profile          UserProfile?
+  powerUps         UserPowerUp[]
+  dailyAttempts    DailyChallengeAttempt[]
+  reviewSessions   ReviewSession[]
+  chatMessages     ChatMessage[]
+  connections      PlayerConnection[]
+
   @@map("users")
 }
 
@@ -37,17 +43,31 @@ model Game {
   roomCode    String   @unique
   hostId      String
   status      GameStatus @default(WAITING)
+  mode        GameMode @default(CLASSIC)
   settings    Json     // Game settings (time limit, categories, etc.)
   currentQuestionIndex Int @default(0)
+  lives       Int?     // For survival mode
+  teamA       Json?    // For team mode
+  teamB       Json?    // For team mode
   startedAt   DateTime?
   endedAt     DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
+
   // Relations
-  players     GamePlayer[]
-  questions   GameQuestion[]
-  
+  players       GamePlayer[]
+  questions     GameQuestion[]
+  powerUpUsages GamePowerUpUsage[]
+  chatMessages  ChatMessage[]
+  replay        GameReplay?
+  connections   PlayerConnection[]
+  roomState     GameRoomState?
+
+  @@index([status, createdAt])
+  @@index([hostId])
+  @@index([roomCode])
+  @@index([roomCode, status])
+  @@index([hostId, status])
   @@map("games")
 }
 
@@ -58,13 +78,18 @@ model GamePlayer {
   score    Int    @default(0)
   streak   Int    @default(0)
   position Int?   // Final position in the game
-  
+  teamId   String? // For team mode (A or B)
+
   // Relations
-  game     Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  answers  PlayerAnswer[]
-  
+  game          Game               @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers       PlayerAnswer[]
+  powerUpUsages GamePowerUpUsage[]
+
   @@unique([gameId, userId])
+  @@index([gameId])
+  @@index([userId])
+  @@index([userId, score])
   @@map("game_players")
 }
 
@@ -86,6 +111,9 @@ model Question {
   createdBy   User?       @relation(fields: [createdById], references: [id])
   gameQuestions GameQuestion[]
   
+  @@index([category, difficulty])
+  @@index([isPublic, category])
+  @@index([createdById])
   @@map("questions")
 }
 
@@ -94,13 +122,15 @@ model GameQuestion {
   gameId     String
   questionId String
   order      Int
-  
+
   // Relations
-  game       Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  question   Question @relation(fields: [questionId], references: [id])
-  answers    PlayerAnswer[]
-  
+  game          Game               @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  question      Question           @relation(fields: [questionId], references: [id])
+  answers       PlayerAnswer[]
+  powerUpUsages GamePowerUpUsage[]
+
   @@unique([gameId, questionId])
+  @@index([gameId, order])
   @@map("game_questions")
 }
 
@@ -119,6 +149,8 @@ model PlayerAnswer {
   gameQuestion   GameQuestion @relation(fields: [gameQuestionId], references: [id], onDelete: Cascade)
   
   @@unique([gamePlayerId, gameQuestionId])
+  @@index([gamePlayerId])
+  @@index([isCorrect, pointsEarned])
   @@map("player_answers")
 }
 
@@ -175,6 +207,8 @@ model Leaderboard {
   updatedAt DateTime @updatedAt
   
   @@unique([userId, category, period])
+  @@index([category, period, rank])
+  @@index([userId, category])
   @@map("leaderboards")
 }
 
@@ -208,4 +242,195 @@ enum FriendshipStatus {
   PENDING
   ACCEPTED
   BLOCKED
+}
+
+// New models for enhanced features
+
+model PowerUp {
+  id          String   @id @default(cuid())
+  type        PowerUpType @unique
+  name        String   @unique
+  description String
+  icon        String
+  cost        Int      @default(100)
+  createdAt   DateTime @default(now())
+
+  // Relations
+  userPowerUps UserPowerUp[]
+  usages       GamePowerUpUsage[]
+
+  @@map("power_ups")
+}
+
+model UserPowerUp {
+  id        String   @id @default(cuid())
+  userId    String
+  powerUpId String
+  quantity  Int      @default(0)
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  powerUp   PowerUp  @relation(fields: [powerUpId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, powerUpId])
+  @@map("user_power_ups")
+}
+
+model GamePowerUpUsage {
+  id         String   @id @default(cuid())
+  gameId     String
+  playerId   String
+  powerUpId  String
+  questionId String
+  usedAt     DateTime @default(now())
+
+  game       Game         @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  player     GamePlayer   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  powerUp    PowerUp      @relation(fields: [powerUpId], references: [id])
+  question   GameQuestion @relation(fields: [questionId], references: [id])
+
+  @@map("game_power_up_usages")
+}
+
+model UserProfile {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  avatar        Json     // {shape, color, accessories, background}
+  banner        String?
+  title         String?
+  theme         String   @default("dark")
+  coins         Int      @default(1000)
+  experience    Int      @default(0)
+  level         Int      @default(1)
+  eloRating     Int      @default(1200)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model DailyChallenge {
+  id          String   @id @default(cuid())
+  date        DateTime @unique
+  questions   Json     // Array of question IDs
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  attempts    DailyChallengeAttempt[]
+
+  @@map("daily_challenges")
+}
+
+model DailyChallengeAttempt {
+  id            String   @id @default(cuid())
+  challengeId   String
+  userId        String
+  score         Int
+  completedAt   DateTime @default(now())
+  answers       Json     // Detailed answers
+
+  challenge     DailyChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user          User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, userId])
+  @@map("daily_challenge_attempts")
+}
+
+model GameReplay {
+  id         String   @id @default(cuid())
+  gameId     String   @unique
+  data       Json     // Complete game state history
+  createdAt  DateTime @default(now())
+
+  game       Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@map("game_replays")
+}
+
+model ReviewSession {
+  id         String   @id @default(cuid())
+  userId     String
+  questions  Json     // Questions to review
+  progress   Json     // Review progress
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("review_sessions")
+}
+
+model ChatMessage {
+  id         String      @id @default(cuid())
+  gameId     String
+  userId     String
+  message    String
+  type       MessageType @default(PREDEFINED)
+  createdAt  DateTime    @default(now())
+
+  game       Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
+}
+
+enum PowerUpType {
+  FIFTY_FIFTY
+  FREEZE_TIME
+  DOUBLE_POINTS
+  SKIP_QUESTION
+  HINT
+}
+
+enum MessageType {
+  PREDEFINED
+  CUSTOM
+  SYSTEM
+}
+
+enum GameMode {
+  CLASSIC
+  SURVIVAL
+  DUEL
+  MARATHON
+  TEAM
+  DAILY
+}
+
+// New models for real-time architecture improvements
+
+model PlayerConnection {
+  id          String   @id @default(cuid())
+  userId      String
+  gameId      String?
+  socketId    String   @unique
+  connectedAt DateTime @default(now())
+  lastSeen    DateTime @default(now())
+  userAgent   String?
+  ipAddress   String?
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game        Game?    @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, userId])
+  @@index([socketId])
+  @@index([userId, connectedAt])
+  @@map("player_connections")
+}
+
+model GameRoomState {
+  id                   String   @id @default(cuid())
+  gameId               String   @unique
+  lastActivity         DateTime @default(now())
+  playerCount          Int      @default(0)
+  currentQuestionIndex Int      @default(0)
+  status               GameStatus
+  roomData             Json?    // Serialized room state for persistence
+
+  game                 Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([lastActivity])
+  @@index([status, lastActivity])
+  @@map("game_room_states")
 }

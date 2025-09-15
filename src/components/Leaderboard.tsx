@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { Trophy, Medal, Award, TrendingUp, X, Crown, Star, Zap, Target, Clock, Percent } from 'lucide-react'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/context/AuthContext'
 
 interface LeaderboardProps {
   onClose: () => void
