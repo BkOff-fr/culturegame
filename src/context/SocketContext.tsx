@@ -46,14 +46,30 @@ interface QuestionResult {
   timeSpent: number;
 }
 
+interface OptimisticUpdate {
+  id: string;
+  type: string;
+  data: any;
+  timestamp: number;
+  confirmed: boolean;
+}
+
+interface ConnectionState {
+  status: 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
+  reconnectAttempts: number;
+  lastDisconnectReason?: string;
+}
+
 interface SocketContextType {
   socket: Socket | null;
   connected: boolean;
+  connectionState: ConnectionState;
   gameState: GameState | null;
   currentQuestion: CurrentQuestion | null;
   questionResults: QuestionResult[] | null;
   messages: ChatMessageData[];
   isHost: boolean;
+  pendingUpdates: OptimisticUpdate[];
 
   // Actions
   connect: (token: string) => Promise<void>;
@@ -65,6 +81,11 @@ interface SocketContextType {
   submitAnswer: (roomCode: string, questionId: string, answer: any, timeSpent: number) => void;
   usePowerUp: (roomCode: string, powerUpId: string, powerUpType: PowerUpType) => void;
   sendMessage: (roomCode: string, message: string, type?: 'PREDEFINED' | 'CUSTOM') => void;
+
+  // Optimistic update functions
+  optimisticUpdate: (type: string, data: any) => string;
+  confirmUpdate: (updateId: string) => void;
+  rollbackUpdate: (updateId: string) => void;
 }
 
 const SocketContext = createContext<SocketContextType | null>(null);
@@ -72,13 +93,19 @@ const SocketContext = createContext<SocketContextType | null>(null);
 export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
+  const [connectionState, setConnectionState] = useState<ConnectionState>({
+    status: 'disconnected',
+    reconnectAttempts: 0
+  });
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState<CurrentQuestion | null>(null);
   const [questionResults, setQuestionResults] = useState<QuestionResult[] | null>(null);
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [isHost, setIsHost] = useState(false);
+  const [pendingUpdates, setPendingUpdates] = useState<OptimisticUpdate[]>([]);
 
   const socketRef = useRef<Socket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { user } = useAuth();
 
   const connect = useCallback(async (token: string) => {
@@ -87,7 +114,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return;
       }
 
-      // Remove the first recovery check to prevent duplicates
+      setConnectionState(prev => ({ ...prev, status: 'connecting' }));
 
       // Configuration dynamique de l'URL Socket.io
       const socketUrl = process.env.NODE_ENV === 'production'
@@ -96,7 +123,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       console.log('Connecting to Socket.io server:', socketUrl);
 
-      // Se connecter au serveur Socket.io
+      // Enhanced Socket.io configuration with better reconnection strategy
       const newSocket = io(socketUrl, {
         auth: { token },
         transports: ['websocket', 'polling'], // WebSocket prioritaire
@@ -105,41 +132,103 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         autoConnect: true,
         reconnection: true,
         reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        reconnectionAttempts: 3, // Réduit de 5 à 3
-        timeout: 10000 // Réduit de 20000 à 10000
+        reconnectionDelayMax: 30000, // Increased max delay
+        reconnectionAttempts: 10, // Increased attempts
+        timeout: 20000, // Increased timeout
+        forceNew: false, // Allow connection reuse
+        query: {
+          gameRecovery: 'true'
+        }
       });
 
       socketRef.current = newSocket;
       setSocket(newSocket);
 
-      // Événements de connexion
+      // Enhanced connection event handling
       newSocket.on('connect', async () => {
         console.log('Connected to Socket.io server:', newSocket.id);
         setConnected(true);
+        setConnectionState({
+          status: 'connected',
+          reconnectAttempts: 0
+        });
 
-        // Récupérer automatiquement une partie active après reconnexion
+        // Clear any pending reconnection timeout
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
+
+        // Enhanced game recovery with recovery flag
         try {
-          const response = await fetch('/api/games/recover')
-          const data = await response.json()
+          const response = await fetch('/api/games/recover', {
+            credentials: 'include'
+          });
+          const data = await response.json();
 
           if (data.game) {
-            console.log('Auto-rejoining recovered game:', data.game.roomCode)
-            newSocket.emit('join-game', { roomCode: data.game.roomCode })
+            console.log('Recovering game session:', data.game.roomCode);
+            newSocket.emit('join-game', {
+              roomCode: data.game.roomCode,
+              recovery: true
+            });
           }
         } catch (error) {
-          console.log('No game to auto-rejoin')
+          console.log('No active game to recover');
         }
       });
 
-      newSocket.on('disconnect', () => {
-        console.log('Disconnected from Socket.io server');
+      newSocket.on('disconnect', (reason) => {
+        console.log('Disconnected from Socket.io server, reason:', reason);
         setConnected(false);
+        setConnectionState(prev => ({
+          ...prev,
+          status: 'disconnected',
+          lastDisconnectReason: reason
+        }));
+
+        // Enhanced reconnection logic based on disconnect reason
+        const isTemporaryDisconnect = [
+          'transport close',
+          'ping timeout',
+          'transport error'
+        ].includes(reason);
+
+        if (isTemporaryDisconnect && token && user) {
+          handleReconnection(token);
+        }
       });
 
       newSocket.on('connect_error', (error) => {
         console.error('Socket.io connection error:', error);
         setConnected(false);
+        setConnectionState(prev => ({
+          ...prev,
+          status: 'disconnected'
+        }));
+
+        // Attempt reconnection with exponential backoff
+        if (token && user) {
+          handleReconnection(token);
+        }
+      });
+
+      newSocket.on('reconnect', (attemptNumber) => {
+        console.log(`Reconnected after ${attemptNumber} attempts`);
+        setConnectionState(prev => ({
+          ...prev,
+          status: 'connected',
+          reconnectAttempts: 0
+        }));
+      });
+
+      newSocket.on('reconnecting', (attemptNumber) => {
+        console.log(`Reconnecting... attempt ${attemptNumber}`);
+        setConnectionState(prev => ({
+          ...prev,
+          status: 'reconnecting',
+          reconnectAttempts: attemptNumber
+        }));
       });
 
       // Événements de jeu
@@ -307,6 +396,152 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [user]);
 
+  // Enhanced reconnection strategy with exponential backoff
+  const handleReconnection = useCallback((token: string) => {
+    if (reconnectTimeoutRef.current) return; // Already attempting reconnection
+
+    setConnectionState(prev => {
+      const maxReconnectAttempts = 10;
+
+      if (prev.reconnectAttempts >= maxReconnectAttempts) {
+        // Fallback to HTTP-based game state recovery
+        recoverViaHTTP();
+        return prev;
+      }
+
+      const delay = Math.min(1000 * Math.pow(2, prev.reconnectAttempts), 30000);
+
+      reconnectTimeoutRef.current = setTimeout(() => {
+        reconnectTimeoutRef.current = null;
+        if (token && user) {
+          connect(token);
+        }
+      }, delay);
+
+      return {
+        ...prev,
+        status: 'reconnecting',
+        reconnectAttempts: prev.reconnectAttempts + 1
+      };
+    });
+  }, [user]);
+
+  // HTTP fallback for game state recovery
+  const recoverViaHTTP = useCallback(async () => {
+    try {
+      const response = await fetch('/api/games/status', {
+        credentials: 'include'
+      });
+      const data = await response.json();
+
+      if (data.game) {
+        // Update local state from HTTP response
+        setGameState(data.game);
+        // Try to reconnect to socket
+        if (user) {
+          const authResponse = await fetch('/api/auth/me', {
+            credentials: 'include'
+          });
+          const authData = await authResponse.json();
+          if (authData.token) {
+            await connect(authData.token);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('HTTP recovery failed:', error);
+      // Could redirect to lobby or show error message
+    }
+  }, [user]);
+
+  // Optimistic update functions
+  const optimisticUpdate = useCallback((type: string, data: any): string => {
+    const updateId = `${type}-${Date.now()}-${Math.random()}`;
+    const update: OptimisticUpdate = {
+      id: updateId,
+      type,
+      data,
+      timestamp: Date.now(),
+      confirmed: false
+    };
+
+    setPendingUpdates(prev => [...prev, update]);
+
+    // Apply update immediately based on type
+    switch (type) {
+      case 'submit-answer':
+        // Show immediate feedback that answer was submitted
+        break;
+      case 'player-ready':
+        setGameState(current => {
+          if (current && user) {
+            return {
+              ...current,
+              players: current.players.map(p =>
+                p.userId === user.id ? { ...p, isReady: true } : p
+              )
+            };
+          }
+          return current;
+        });
+        break;
+      case 'join-game':
+        // Show loading state or optimistic join
+        break;
+    }
+
+    // Set timeout for rollback if not confirmed
+    setTimeout(() => {
+      setPendingUpdates(current => {
+        const stillPending = current.find(u => u.id === updateId && !u.confirmed);
+        if (stillPending) {
+          rollbackUpdate(updateId);
+          return current.filter(u => u.id !== updateId);
+        }
+        return current;
+      });
+    }, 5000);
+
+    return updateId;
+  }, [user]);
+
+  const confirmUpdate = useCallback((updateId: string) => {
+    setPendingUpdates(prev =>
+      prev.map(update =>
+        update.id === updateId ? { ...update, confirmed: true } : update
+      )
+    );
+
+    // Clean up confirmed updates after a delay
+    setTimeout(() => {
+      setPendingUpdates(prev => prev.filter(u => u.id !== updateId));
+    }, 1000);
+  }, []);
+
+  const rollbackUpdate = useCallback((updateId: string) => {
+    const update = pendingUpdates.find(u => u.id === updateId);
+    if (!update) return;
+
+    // Rollback the optimistic update based on type
+    switch (update.type) {
+      case 'player-ready':
+        setGameState(current => {
+          if (current && user) {
+            return {
+              ...current,
+              players: current.players.map(p =>
+                p.userId === user.id ? { ...p, isReady: false } : p
+              )
+            };
+          }
+          return current;
+        });
+        break;
+    }
+
+    setPendingUpdates(prev => prev.filter(u => u.id !== updateId));
+  }, [pendingUpdates, user]);
+
   const disconnect = useCallback(() => {
     if (socketRef.current) {
       socketRef.current.disconnect();
@@ -344,9 +579,13 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const markReady = useCallback((roomCode: string) => {
     if (socketRef.current) {
       console.log('Marking as ready');
-      socketRef.current.emit('player-ready', { roomCode });
+
+      // Apply optimistic update
+      const updateId = optimisticUpdate('player-ready', { roomCode });
+
+      socketRef.current.emit('player-ready', { roomCode, updateId });
     }
-  }, []);
+  }, [optimisticUpdate]);
 
   const startGame = useCallback((roomCode: string) => {
     if (socketRef.current && isHost) {
@@ -363,14 +602,23 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   ) => {
     if (socketRef.current) {
       console.log('Submitting answer:', { questionId, answer, timeSpent });
-      socketRef.current.emit('submit-answer', {
-        roomCode,
+
+      // Apply optimistic update
+      const updateId = optimisticUpdate('submit-answer', {
         questionId,
         answer,
         timeSpent
       });
+
+      socketRef.current.emit('submit-answer', {
+        roomCode,
+        questionId,
+        answer,
+        timeSpent,
+        updateId
+      });
     }
-  }, []);
+  }, [optimisticUpdate]);
 
   const usePowerUp = useCallback((
     roomCode: string,
@@ -409,9 +657,45 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [user, disconnect]);
 
+
+  // Enhanced game state events with update confirmation
+  useEffect(() => {
+    if (!socket) return;
+
+    // Listen for update confirmations
+    socket.on('update-confirmed', (data: { updateId: string }) => {
+      confirmUpdate(data.updateId);
+    });
+
+    // Enhanced game state updates with version tracking
+    socket.on('game-state-update', (data: {
+      gameId: string;
+      state: GameState;
+      timestamp: number;
+      version: number;
+    }) => {
+      console.log('Game state update received:', data);
+      setGameState(current => {
+        // Only apply if this is a newer version
+        if (!current || !current.version || data.version > current.version) {
+          return { ...data.state, version: data.version };
+        }
+        return current;
+      });
+    });
+
+    return () => {
+      socket.off('update-confirmed');
+      socket.off('game-state-update');
+    };
+  }, [socket, confirmUpdate]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
       disconnect();
     };
   }, [disconnect]);
@@ -419,11 +703,13 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const value: SocketContextType = {
     socket,
     connected,
+    connectionState,
     gameState,
     currentQuestion,
     questionResults,
     messages,
     isHost,
+    pendingUpdates,
     connect,
     disconnect,
     joinGame,
@@ -432,7 +718,10 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     startGame,
     submitAnswer,
     usePowerUp,
-    sendMessage
+    sendMessage,
+    optimisticUpdate,
+    confirmUpdate,
+    rollbackUpdate
   };
 
   return (

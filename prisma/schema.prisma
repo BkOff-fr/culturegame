@@ -33,6 +33,7 @@ model User {
   dailyAttempts    DailyChallengeAttempt[]
   reviewSessions   ReviewSession[]
   chatMessages     ChatMessage[]
+  connections      PlayerConnection[]
 
   @@map("users")
 }
@@ -59,10 +60,14 @@ model Game {
   powerUpUsages GamePowerUpUsage[]
   chatMessages  ChatMessage[]
   replay        GameReplay?
+  connections   PlayerConnection[]
+  roomState     GameRoomState?
 
   @@index([status, createdAt])
   @@index([hostId])
   @@index([roomCode])
+  @@index([roomCode, status])
+  @@index([hostId, status])
   @@map("games")
 }
 
@@ -391,4 +396,41 @@ enum GameMode {
   MARATHON
   TEAM
   DAILY
+}
+
+// New models for real-time architecture improvements
+
+model PlayerConnection {
+  id          String   @id @default(cuid())
+  userId      String
+  gameId      String?
+  socketId    String   @unique
+  connectedAt DateTime @default(now())
+  lastSeen    DateTime @default(now())
+  userAgent   String?
+  ipAddress   String?
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game        Game?    @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, userId])
+  @@index([socketId])
+  @@index([userId, connectedAt])
+  @@map("player_connections")
+}
+
+model GameRoomState {
+  id                   String   @id @default(cuid())
+  gameId               String   @unique
+  lastActivity         DateTime @default(now())
+  playerCount          Int      @default(0)
+  currentQuestionIndex Int      @default(0)
+  status               GameStatus
+  roomData             Json?    // Serialized room state for persistence
+
+  game                 Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([lastActivity])
+  @@index([status, lastActivity])
+  @@map("game_room_states")
 }

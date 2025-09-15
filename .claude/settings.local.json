@@ -18,7 +18,8 @@
       "Bash(cmd //c:*)",
       "Bash(npx next dev:*)",
       "Bash(tasklist)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION=\"yes you can do it\" npx prisma migrate reset --force)"
     ],
     "deny": [],
     "ask": []
