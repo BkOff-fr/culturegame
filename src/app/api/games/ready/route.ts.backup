@@ -1,0 +1,66 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/db'
+import { verifyToken } from '@/lib/auth'
+
+export async function POST(request: NextRequest) {
+  try {
+    const token = request.cookies.get('token')?.value
+    if (!token) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    }
+
+    const payload = verifyToken(token)
+    if (!payload) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
+    }
+
+    const { roomCode } = await request.json()
+    if (!roomCode) {
+      return NextResponse.json({ error: 'Room code is required' }, { status: 400 })
+    }
+
+    const game = await prisma.game.findUnique({ where: { roomCode: roomCode.toUpperCase() } })
+    if (!game) {
+      return NextResponse.json({ error: 'Game not found' }, { status: 404 })
+    }
+
+    // Read or create room state
+    const existingState = await prisma.gameRoomState.findUnique({ where: { gameId: game.id } })
+    let roomData: any = existingState?.roomData || {}
+    if (!roomData.readyByUserId) roomData.readyByUserId = {}
+
+    // Toggle readiness for this user (set to true)
+    roomData.readyByUserId[payload.userId] = true
+
+    // Upsert room state
+    await prisma.gameRoomState.upsert({
+      where: { gameId: game.id },
+      update: { roomData, status: game.status, currentQuestionIndex: game.currentQuestionIndex },
+      create: { gameId: game.id, status: game.status, roomData }
+    })
+
+    const updatedGame = await prisma.game.findUnique({
+      where: { id: game.id },
+      include: {
+        players: { include: { user: { select: { id: true, username: true, avatar: true } } } },
+        roomState: true,
+      }
+    })
+
+    const readyMap = (updatedGame?.roomState?.roomData as any)?.readyByUserId || {}
+
+    return NextResponse.json({
+      game: {
+        id: updatedGame!.id,
+        roomCode: updatedGame!.roomCode,
+        status: updatedGame!.status,
+        settings: updatedGame!.settings,
+        hostId: updatedGame!.hostId,
+        players: updatedGame!.players.map(p => ({ id: p.id, score: p.score, isReady: !!readyMap[p.user.id], user: p.user })),
+      }
+    })
+  } catch (error) {
+    console.error('Game ready error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+} 

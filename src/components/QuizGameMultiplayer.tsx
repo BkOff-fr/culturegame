@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '@/context/AuthContext'
-import { useSocket } from '@/context/SocketContext'
+import { useGame } from '@/context/GameContext'
 
 import AuthForm from '@/components/AuthForm'
 import GameLobby from '@/components/GameLobby'
-import GameRoomSocket from '@/components/GameRoomSocket'
-import GamePlaySocket from '@/components/GamePlaySocket'
+import GameRoom from '@/components/GameRoom'
+import GamePlay from '@/components/GamePlay'
 import GameResults from '@/components/GameResults'
 import QuestionEditor from '@/components/QuestionEditor'
 import Leaderboard from '@/components/Leaderboard'
@@ -21,15 +21,15 @@ const QuizGameMultiplayer = () => {
   const [gameResults, setGameResults] = useState<any>(null)
 
   const { user, token, loading: authLoading } = useAuth()
-  const { connected, gameState, currentQuestion, connect } = useSocket()
+  const { gameState, currentQuestion, recoverGame, joinGame } = useGame()
 
-  // Auto-connect to socket when user is authenticated
+  // Auto-recover game when user is authenticated
   useEffect(() => {
-    if (user && token && !connected && !authLoading) {
-      console.log('Auto-connecting to socket with token...')
-      connect(token)
+    if (user && !authLoading) {
+      console.log('Auto-recovering game session...')
+      recoverGame()
     }
-  }, [user, token, connected, authLoading, connect])
+  }, [user, authLoading, recoverGame])
 
   // Handle authentication state changes
   useEffect(() => {
@@ -93,7 +93,10 @@ const QuizGameMultiplayer = () => {
       const data = await response.json()
       console.log('Game created:', data.game)
 
-      // The socket will auto-connect to the game room
+      // Ensure context has the new game before moving to waiting
+      await recoverGame()
+
+      // Navigate to waiting screen
       setCurrentScreen('waiting')
     } catch (error) {
       console.error('Failed to create game with settings:', error)
@@ -103,26 +106,12 @@ const QuizGameMultiplayer = () => {
 
   const handleJoinGame = async (roomCode: string) => {
     try {
-      // Join game via API first
-      const response = await fetch('/api/games/join', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify({ roomCode })
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to join game')
+      const success = await joinGame(roomCode)
+      if (success) {
+        setCurrentScreen('waiting')
+      } else {
+        throw new Error('Failed to join game')
       }
-
-      const data = await response.json()
-      console.log('Joined game:', data.game)
-
-      // The socket will auto-connect to the game room
-      setCurrentScreen('waiting')
     } catch (error) {
       console.error('Failed to join game:', error)
       throw error
@@ -156,12 +145,12 @@ const QuizGameMultiplayer = () => {
 
     editor: () => <QuestionEditor onClose={() => setCurrentScreen('lobby')} />,
 
-    waiting: () => <GameRoomSocket
+    waiting: () => <GameRoom
       onStartGame={() => setCurrentScreen('game')}
       onLeaveGame={() => setCurrentScreen('lobby')}
     />,
 
-    game: () => <GamePlaySocket
+    game: () => <GamePlay
       onGameEnd={(results) => {
         setGameResults(results)
         setCurrentScreen('results')
@@ -188,6 +177,7 @@ const QuizGameMultiplayer = () => {
 
   // Show connection status for debugging
   const showDebugInfo = process.env.NODE_ENV === 'development'
+  const connected = false
 
   return (
     <div className="relative">

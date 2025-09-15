@@ -19,7 +19,9 @@
       "Bash(npx next dev:*)",
       "Bash(tasklist)",
       "mcp__ide__getDiagnostics",
-      "Bash(PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION=\"yes you can do it\" npx prisma migrate reset --force)"
+      "Bash(PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION=\"yes you can do it\" npx prisma migrate reset --force)",
+      "Bash(touch:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,0 +1,1 @@
+const test = async () => { try { const res = await fetch('http://localhost:3000/api/games/test123/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include' }); const data = await res.text(); console.log('Status:', res.status); console.log('Response:', data); } catch (e) { console.log('Error:', e.message); } }; test();

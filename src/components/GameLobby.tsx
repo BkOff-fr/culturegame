@@ -3,7 +3,6 @@
 import React, { useState } from 'react'
 import { Users, Zap, Edit3, LogOut, Trophy, BarChart3 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { useSocket } from '@/context/SocketContext'
 
 interface GameLobbyProps {
   onCreateRoom: () => void
@@ -27,7 +26,6 @@ const GameLobby: React.FC<GameLobbyProps> = ({
   const [error, setError] = useState('')
 
   const { user, logout } = useAuth()
-  const { disconnect } = useSocket()
 
   const handleCreateRoom = async () => {
     onCreateRoom()
@@ -52,10 +50,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({
     try {
       console.log('Starting logout process...')
 
-      // Disconnect from Socket.io first
-      disconnect()
-
-      // Then logout from auth
+      // Logout from auth
       await logout()
 
       console.log('Logout process completed')
