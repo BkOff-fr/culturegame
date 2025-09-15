@@ -103,10 +103,13 @@ export async function POST(request: NextRequest) {
         roomCode: updatedGame!.roomCode,
         status: updatedGame!.status,
         settings: updatedGame!.settings,
+        hostId: updatedGame!.hostId, // Ajout hostId manquant
+        currentQuestionIndex: updatedGame!.currentQuestionIndex || 0, // Ajout index courant
         players: updatedGame!.players.map(p => ({
           id: p.id,
           score: p.score,
-          user: p.user
+          user: p.user,
+          hasAnswered: false // Nouveau joueur n'a pas encore répondu
         }))
       }
     })

@@ -31,14 +31,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ onStartGame, onLeaveGame }) => {
     refreshGameState
   } = useGame()
 
-  // Refresh game state every 2 seconds (handled by GameContext)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      refreshGameState()
-    }, 2000)
-
-    return () => clearInterval(interval)
-  }, [refreshGameState])
+  // Le polling est déjà géré par GameContext
+  // Pas besoin de polling supplémentaire ici
 
   // Monitor game status changes
   useEffect(() => {
@@ -119,7 +113,8 @@ const GameRoom: React.FC<GameRoomProps> = ({ onStartGame, onLeaveGame }) => {
 
   const readyPlayers = gameState.players?.filter(p => p.isReady) || []
   const totalPlayers = gameState.players?.length || 0
-  const canStart = isHost && totalPlayers >= 1 && readyPlayers.length === totalPlayers
+  // En mode solo (1 joueur), on peut démarrer directement. En mode multijoueur, tous doivent être prêts
+  const canStart = isHost && totalPlayers >= 1 && (totalPlayers === 1 || readyPlayers.length === totalPlayers)
 
   return (
     <div className="min-h-screen bg-slate-950 relative overflow-hidden">
@@ -213,7 +208,7 @@ const GameRoom: React.FC<GameRoomProps> = ({ onStartGame, onLeaveGame }) => {
 
           {/* Actions */}
           <div className="space-y-4">
-            {!isReady && (
+            {!isReady && totalPlayers > 1 && (
               <button
                 onClick={handleMarkReady}
                 disabled={loading}

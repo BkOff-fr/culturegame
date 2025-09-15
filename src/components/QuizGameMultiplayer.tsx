@@ -155,6 +155,7 @@ const QuizGameMultiplayer = () => {
         setGameResults(results)
         setCurrentScreen('results')
       }}
+      onLeaveGame={() => setCurrentScreen('lobby')}
     />,
 
     results: () => <GameResults
@@ -176,19 +177,8 @@ const QuizGameMultiplayer = () => {
   }
 
   // Show connection status for debugging
-  const showDebugInfo = process.env.NODE_ENV === 'development'
-  const connected = false
-
   return (
     <div className="relative">
-      {showDebugInfo && (
-        <div className="fixed top-4 right-4 bg-black/80 text-white p-2 rounded text-xs z-50">
-          <div>Screen: {currentScreen}</div>
-          <div>Auth: {user ? 'Yes' : 'No'}</div>
-          <div>Socket: {connected ? 'Connected' : 'Disconnected'}</div>
-          <div>Game: {gameState ? gameState.status : 'None'}</div>
-        </div>
-      )}
       {screens[currentScreen]()}
     </div>
   )

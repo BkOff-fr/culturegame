@@ -34,6 +34,8 @@ model User {
   reviewSessions   ReviewSession[]
   chatMessages     ChatMessage[]
   connections      PlayerConnection[]
+  reactions        PlayerReaction[]
+  challengeResponses MicroChallengeResponse[]
 
   @@map("users")
 }
@@ -62,6 +64,8 @@ model Game {
   replay        GameReplay?
   connections   PlayerConnection[]
   roomState     GameRoomState?
+  reactions     PlayerReaction[]
+  microChallenges MicroChallenge[]
 
   @@index([status, createdAt])
   @@index([hostId])
@@ -433,4 +437,55 @@ model GameRoomState {
   @@index([lastActivity])
   @@index([status, lastActivity])
   @@map("game_room_states")
+}
+
+model PlayerReaction {
+  id          String   @id @default(cuid())
+  gameId      String
+  userId      String
+  reaction    String   // 🔥, 😰, 🤔, 💪, 😅, 🎯, ⚡
+  questionId  String?  // Optionnel, pour les réactions pendant une question
+  timestamp   DateTime @default(now())
+  expiresAt   DateTime // Les réactions expirent après quelques secondes
+
+  game        Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, timestamp])
+  @@index([questionId, timestamp])
+  @@index([expiresAt])
+  @@map("player_reactions")
+}
+
+model MicroChallenge {
+  id          String   @id @default(cuid())
+  gameId      String
+  type        String   // 'poll', 'prediction', 'quickTrivia'
+  question    String
+  options     Json?    // Pour les sondages/prédictions
+  correctAnswer String? // Pour les trivias
+  status      String   @default("ACTIVE") // ACTIVE, COMPLETED
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+
+  game        Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  responses   MicroChallengeResponse[]
+
+  @@index([gameId, status])
+  @@index([expiresAt])
+  @@map("micro_challenges")
+}
+
+model MicroChallengeResponse {
+  id            String   @id @default(cuid())
+  challengeId   String
+  userId        String
+  response      String
+  submittedAt   DateTime @default(now())
+
+  challenge     MicroChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, userId])
+  @@map("micro_challenge_responses")
 }
