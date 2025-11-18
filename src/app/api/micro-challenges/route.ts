@@ -32,6 +32,56 @@ const MICRO_CHALLENGES = [
   }
 ];
 
+// Mode-specific challenges
+const MODE_SPECIFIC_CHALLENGES: Record<string, any[]> = {
+  SURVIVAL: [
+    {
+      type: 'prediction',
+      question: 'Qui va perdre une vie sur cette question ?',
+      options: [] // Player names
+    },
+    {
+      type: 'poll',
+      question: 'Combien de joueurs vont survivre aux 5 prochaines questions ?',
+      options: [] // Dynamic based on player count
+    },
+    {
+      type: 'prediction',
+      question: 'Quel joueur va survivre le plus longtemps ?',
+      options: [] // Player names
+    }
+  ],
+  MARATHON: [
+    {
+      type: 'prediction',
+      question: 'Qui va scorer le plus sur le prochain niveau ?',
+      options: [] // Player names
+    },
+    {
+      type: 'poll',
+      question: 'Qui va atteindre le niveau Expert en premier ?',
+      options: [] // Player names
+    },
+    {
+      type: 'prediction',
+      question: 'Combien de joueurs vont réussir cette question ?',
+      options: ['0', '1', '2', '3', '4+']
+    }
+  ],
+  TEAM_SURVIVAL: [
+    {
+      type: 'poll',
+      question: 'Quelle équipe va perdre une vie en premier ?',
+      options: ['Équipe A', 'Équipe B']
+    },
+    {
+      type: 'prediction',
+      question: 'Combien de vies va perdre votre équipe sur les 3 prochaines questions ?',
+      options: ['0', '1', '2', '3+']
+    }
+  ]
+};
+
 export async function POST(request: NextRequest) {
   try {
     const token = request.cookies.get('token')?.value;
@@ -45,7 +95,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Token invalide' }, { status: 401 });
     }
 
-    const { roomCode, type, response, challengeId } = await request.json();
+    const { roomCode, type, response, challengeId, customChallenge } = await request.json();
 
     if (!roomCode) {
       return NextResponse.json({ error: 'Room code requis' }, { status: 400 });
@@ -98,12 +148,33 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Un défi est déjà actif' }, { status: 400 });
       }
 
-      // Sélectionner un défi aléatoire
-      let selectedChallenge = MICRO_CHALLENGES[Math.floor(Math.random() * MICRO_CHALLENGES.length)];
+      // Use custom challenge if provided, otherwise select based on game mode
+      let selectedChallenge;
+
+      if (customChallenge) {
+        // Use custom challenge provided by client
+        selectedChallenge = customChallenge;
+      } else {
+        // Select challenge based on game mode
+        const gameMode = game.mode;
+        const modeChallenges = MODE_SPECIFIC_CHALLENGES[gameMode];
+
+        if (modeChallenges && modeChallenges.length > 0) {
+          // Use mode-specific challenges
+          selectedChallenge = modeChallenges[Math.floor(Math.random() * modeChallenges.length)];
+        } else {
+          // Fallback to generic challenges
+          selectedChallenge = MICRO_CHALLENGES[Math.floor(Math.random() * MICRO_CHALLENGES.length)];
+        }
+      }
 
       // Personnaliser les options si nécessaire
-      if (selectedChallenge.type === 'poll' && selectedChallenge.options.length === 0) {
-        if (selectedChallenge.question.includes('rapidement') || selectedChallenge.question.includes('remporter')) {
+      if (selectedChallenge.options && selectedChallenge.options.length === 0) {
+        if (selectedChallenge.question.includes('perdre une vie') ||
+            selectedChallenge.question.includes('survivre le plus longtemps') ||
+            selectedChallenge.question.includes('scorer le plus') ||
+            selectedChallenge.question.includes('rapidement') ||
+            selectedChallenge.question.includes('remporter')) {
           selectedChallenge = {
             ...selectedChallenge,
             options: game.players.map(p => p.user.username)
@@ -115,6 +186,12 @@ export async function POST(request: NextRequest) {
             options: Array.from({ length: playerCount + 1 }, (_, i) =>
               i === 0 ? 'Aucun' : i === playerCount ? 'Tous les joueurs' : `${i} joueur${i > 1 ? 's' : ''}`
             )
+          };
+        } else if (selectedChallenge.question.includes('survivre aux')) {
+          const playerCount = game.players.length;
+          selectedChallenge = {
+            ...selectedChallenge,
+            options: Array.from({ length: playerCount + 1 }, (_, i) => `${i} joueur${i > 1 ? 's' : ''}`)
           };
         }
       }

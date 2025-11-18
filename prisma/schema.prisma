@@ -399,6 +399,7 @@ enum GameMode {
   DUEL
   MARATHON
   TEAM
+  TEAM_SURVIVAL
   DAILY
 }
 

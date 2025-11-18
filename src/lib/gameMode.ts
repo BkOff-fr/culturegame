@@ -76,6 +76,21 @@ export const GAME_MODE_CONFIGS: Record<GameMode, GameModeConfig> = {
       teamDiscussion: 15 // seconds for team to discuss
     }
   },
+  [GameMode.TEAM_SURVIVAL]: {
+    name: 'Survie d\'Équipe',
+    description: 'Mode survie coopératif avec vies partagées',
+    icon: '🛡️',
+    minPlayers: 2,
+    maxPlayers: 4,
+    defaultSettings: {
+      sharedLives: 5,
+      timeLimit: 25,
+      livesPenalty: 1,
+      questionCount: -1, // Unlimited until all lives lost
+      teamSize: 2,
+      sharedScore: true
+    }
+  },
   [GameMode.DAILY]: {
     name: 'Défi Quotidien',
     description: 'Même questions pour tous, classement journalier',
@@ -116,6 +131,64 @@ export class GameModeManager {
     }
 
     return { lives: currentLives, eliminated: false };
+  }
+
+  // Team Survival Mode Logic
+  static async processTeamSurvivalAnswer(
+    gameId: string,
+    teamId: string,
+    isCorrect: boolean
+  ): Promise<{ sharedLives: number; teamEliminated: boolean }> {
+    // Get game to access shared lives from settings
+    const game = await prisma.game.findUnique({
+      where: { id: gameId },
+      include: {
+        players: {
+          where: { teamId },
+          select: { id: true }
+        }
+      }
+    });
+
+    if (!game) {
+      throw new Error('Game not found');
+    }
+
+    const settings = game.settings as any;
+    const currentSharedLives = settings.currentSharedLives || settings.sharedLives || 5;
+
+    if (!isCorrect) {
+      const newSharedLives = Math.max(0, currentSharedLives - 1);
+      const teamEliminated = newSharedLives === 0;
+
+      // Update game settings with new shared lives
+      await prisma.game.update({
+        where: { id: gameId },
+        data: {
+          settings: {
+            ...settings,
+            currentSharedLives: newSharedLives
+          }
+        }
+      });
+
+      // If team is eliminated, mark all team players as eliminated
+      if (teamEliminated) {
+        await prisma.gamePlayer.updateMany({
+          where: {
+            gameId,
+            teamId
+          },
+          data: {
+            lives: 0
+          }
+        });
+      }
+
+      return { sharedLives: newSharedLives, teamEliminated };
+    }
+
+    return { sharedLives: currentSharedLives, teamEliminated: false };
   }
 
   // Marathon Mode Logic
